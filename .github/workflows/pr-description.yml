@@ -10,6 +10,7 @@ on:
 
 permissions:
   pull-requests: write
+  contents: read
 
 jobs:
   fill-description:
@@ -20,27 +21,35 @@ jobs:
         run: |
           echo "🔧 Installing GitHub CLI..."
           sudo apt update
-          sudo apt install -y gh
+          sudo apt install -y gh git
 
       - name: Authenticate GitHub CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔑 Authenticating with GitHub CLI..."
+          echo "🔑 Authenticating GitHub CLI..."
           gh auth status
 
-      - name: Extract Branches from Commit Messages and Update PR
+      - name: Checkout the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed to access all commits
+
+      - name: Get commit messages from PR and update description
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          echo "📋 Fetching commit messages from PR #$PR_NUMBER..."
-          COMMITS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json commits -q '.commits[].message')
+          echo "📋 Getting commit messages between $BASE_SHA and $HEAD_SHA"
+
+          COMMITS=$(git log --pretty=format:"%s" "$BASE_SHA..$HEAD_SHA")
+
           echo "🔍 Raw commit messages:"
           echo "$COMMITS"
 
-          # Extract lines that look like merge commits with our pattern
           MERGED_BRANCHES=$(echo "$COMMITS" | grep -oE "'(feature|bugfix|improvements|chore)/#[0-9]+_[^']+'" | tr -d "'" | sort -u)
 
           echo "📂 Extracted merged branches:"
