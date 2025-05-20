@@ -6,6 +6,7 @@ on:
     branches:
       - stage
       - master
+      - main
 
 permissions:
   pull-requests: write
