@@ -50,7 +50,8 @@ jobs:
           echo "🔍 Raw commit messages:"
           echo "$COMMITS"
 
-          MERGED_BRANCHES=$(echo "$COMMITS" | grep -oE "'(feature|bugfix|improvements|chore)/#[0-9]+_[^']+'" | tr -d "'" | sort -u)
+          MERGED_BRANCHES=$(echo "$COMMITS" | grep -oE "(feature|bugfix|improvements|chore)/#[0-9]+_[a-zA-Z0-9_-]+" | sort -u)
+
 
           echo "📂 Extracted merged branches:"
           echo "$MERGED_BRANCHES"
