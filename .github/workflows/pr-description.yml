@@ -38,6 +38,9 @@ jobs:
           # Extract branch names that follow the pattern
           BRANCHES=$(echo "$COMMITS" | grep -oE '(feature|bugfix|improvements|chore)/#[0-9]+_[a-zA-Z0-9_/-]+' | sort | uniq)
 
+          echo "Found branches: $BRANCHES"
+
+
           declare -A tickets_by_type
 
           # Iterate over branch names
