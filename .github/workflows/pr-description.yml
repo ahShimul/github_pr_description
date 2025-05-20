@@ -11,7 +11,7 @@ on:
 jobs:
   fill-description:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.base.ref == 'stage' || github.event.pull_request.base.ref == 'master'
+    if: github.event.pull_request.base.ref == 'stage' || github.event.pull_request.base.ref == 'master' || github.event.pull_request.base.ref == 'main'
     steps:
       - name: Checkout the code
         uses: actions/checkout@v4
