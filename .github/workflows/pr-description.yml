@@ -1,4 +1,4 @@
-name: Auto-fill PR Description from Branch Name
+name: Auto-fill PR Description from Commit Messages
 
 on:
   pull_request:
@@ -6,7 +6,6 @@ on:
     branches:
       - stage
       - master
-      - main
 
 permissions:
   pull-requests: write
@@ -29,41 +28,57 @@ jobs:
           echo "🔑 Authenticating with GitHub CLI..."
           gh auth status
 
-      - name: Generate and Update PR Description
+      - name: Extract Branches from Commit Messages and Update PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "📋 Fetching source branch of PR #$PR_NUMBER from $REPO..."
-          BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName -q .headRefName)
+          echo "📋 Fetching commit messages from PR #$PR_NUMBER..."
+          COMMITS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json commits -q '.commits[].message')
+          echo "🔍 Raw commit messages:"
+          echo "$COMMITS"
 
-          echo "🔎 PR Source Branch: $BRANCH"
+          # Extract lines that look like merge commits with our pattern
+          MERGED_BRANCHES=$(echo "$COMMITS" | grep -oE "'(feature|bugfix|improvements|chore)/#[0-9]+_[^']+'" | tr -d "'" | sort -u)
+
+          echo "📂 Extracted merged branches:"
+          echo "$MERGED_BRANCHES"
 
           declare -A TICKETS_BY_TYPE
           DESCRIPTION=""
 
-          # Match branch pattern: type/#ticket_desc (e.g., feature/#12345_add-login)
-          if [[ "$BRANCH" =~ ^(feature|bugfix|improvements|chore)/#([0-9]+)_ ]]; then
-            TYPE="${BASH_REMATCH[1]}"
-            TICKET="${BASH_REMATCH[2]}"
-            echo "✅ Matched branch type: $TYPE"
-            echo "🎫 Extracted ticket number: $TICKET"
-            TICKETS_BY_TYPE["$TYPE"]="$TICKET"
-          else
-            echo "⚠️ Branch format does not match expected pattern. Skipping update."
+          while IFS= read -r BRANCH; do
+            echo "🔎 Processing branch: $BRANCH"
+
+            if [[ "$BRANCH" =~ ^(feature|bugfix|improvements|chore)/#([0-9]+)_ ]]; then
+              TYPE="${BASH_REMATCH[1]}"
+              TICKET="${BASH_REMATCH[2]}"
+              echo "✅ Type: $TYPE, Ticket: $TICKET"
+              TICKETS_BY_TYPE["$TYPE"]+="$TICKET"$'\n'
+            else
+              echo "⚠️ Skipped non-matching branch: $BRANCH"
+            fi
+          done <<< "$MERGED_BRANCHES"
+
+          for TYPE in "${!TICKETS_BY_TYPE[@]}"; do
+            DESCRIPTION+="### $TYPE"$'\n'
+            echo "📦 Adding section: $TYPE"
+            UNIQUE_TICKETS=$(echo "${TICKETS_BY_TYPE[$TYPE]}" | sort -u)
+            while IFS= read -r ID; do
+              [[ -n "$ID" ]] && DESCRIPTION+="- Kunnusta/tickets#$ID"$'\n'
+            done <<< "$UNIQUE_TICKETS"
+            DESCRIPTION+=$'\n'
+          done
+
+          if [[ -z "$DESCRIPTION" ]]; then
+            echo "⚠️ No valid branch data found. Skipping PR update."
             exit 0
           fi
 
-          # Construct the description
-          for TYPE in "${!TICKETS_BY_TYPE[@]}"; do
-            DESCRIPTION+="### $TYPE"$'\n'
-            DESCRIPTION+="- Kunnusta/tickets#${TICKETS_BY_TYPE[$TYPE]}"$'\n\n'
-          done
-
-          echo "📝 Generated PR Description:"
+          echo "📝 Final generated PR description:"
           echo "$DESCRIPTION"
 
           echo "📤 Updating PR description..."
           gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$DESCRIPTION"
-          echo "✅ PR description updated successfully."
+          echo "✅ PR description updated."
