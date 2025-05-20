@@ -1,0 +1,31 @@
+name: Enforce PR Structure to Develop
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validate-pr-structure:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR title and source branch
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "🔍 Validating PR targeting 'develop'"
+          echo "📝 PR Title: $PR_TITLE"
+          echo "🌿 Source Branch: $SOURCE_BRANCH"
+
+          VALID_BRANCH_REGEX="^(feature|bugfix|chore|improvements)/#[0-9]+_[a-zA-Z0-9_-]+$"
+
+          if [[ "$SOURCE_BRANCH" =~ $VALID_BRANCH_REGEX ]]; then
+            echo "✅ Branch name is valid: $SOURCE_BRANCH"
+          else
+            echo "❌ Invalid branch name format: '$SOURCE_BRANCH'"
+            echo "➡️ Expected: <type>/#<ticket_number>_<desc>"
+            exit 1
+          fi
