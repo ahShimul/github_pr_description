@@ -1,31 +1,67 @@
-name: Auto-fill PR Description
+name: Fill PR Description
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, edited, synchronize]
     branches:
       - stage
       - master
+      - main
 
 jobs:
-  autofill-description:
+  fill-description:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'stage' || github.event.pull_request.base.ref == 'master'
     steps:
-      - name: Checkout code
+      - name: Checkout the code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.x'
+          node-version: '20'
 
-      - name: Install PyGithub
-        run: pip install PyGithub
-
-      - name: Fill PR Description
+      - name: Parse merged branches and update PR description
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python .github/scripts/fill_pr_description.py
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
+          REPO="${{ github.repository }}"
+
+          echo "Fetching merged commits from PR #$PR_NUMBER..."
+
+          # Get merged commits
+          COMMITS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json commits -q '.commits[].message')
+
+          # Extract branch names that follow the pattern
+          BRANCHES=$(echo "$COMMITS" | grep -oE '(feature|bugfix|improvements|chore)/#[0-9]+_[a-zA-Z0-9_/-]+' | sort | uniq)
+
+          declare -A tickets_by_type
+
+          # Iterate over branch names
+          while IFS= read -r branch; do
+            TYPE=$(echo "$branch" | cut -d'/' -f1)
+            TICKET=$(echo "$branch" | grep -oE '#[0-9]+' | tr -d '#')
+            if [ -n "$TICKET" ]; then
+              tickets_by_type[$TYPE]+="Kunnusta/tickets#$TICKET"$'\n'
+            fi
+          done <<< "$BRANCHES"
+
+          # Build markdown description
+          DESCRIPTION=""
+          for type in "${!tickets_by_type[@]}"; do
+            DESCRIPTION+="### ${type}\n"
+            # Remove duplicates
+            TICKETS=$(echo "${tickets_by_type[$type]}" | sort -u)
+            while IFS= read -r ticket; do
+              DESCRIPTION+="- $ticket\n"
+            done <<< "$TICKETS"
+            DESCRIPTION+="\n"
+          done
+
+          echo -e "Generated Description:\n$DESCRIPTION"
+
+          # Update PR description
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$DESCRIPTION"
