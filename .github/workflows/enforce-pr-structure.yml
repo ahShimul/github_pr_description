@@ -1,0 +1,29 @@
+name: Enforce PR Title Format
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR title format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "🔍 Validating PR title format targeting 'develop'"
+          echo "📝 PR Title: $PR_TITLE"
+
+          VALID_TITLE_REGEX="^(feature|bugfix|chore|improvements)/#[0-9]+_[a-zA-Z0-9_-]+$"
+
+          if [[ "$PR_TITLE" =~ $VALID_TITLE_REGEX ]]; then
+            echo "✅ PR title format is valid"
+          else
+            echo "❌ Invalid PR title format!"
+            echo "➡️ Expected format: (feature|bugfix|chore|improvements)/#<ticketId>_<description>"
+            exit 1
+          fi
