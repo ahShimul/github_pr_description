@@ -1,31 +1,29 @@
-name: Enforce PR Structure to Develop
+name: Enforce PR Title Format
 
 on:
   pull_request:
     branches:
       - develop
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, reopened, synchronize]
 
 jobs:
-  validate-pr-structure:
+  validate-pr-title:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check PR title and source branch
+      - name: Validate PR title format
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          echo "🔍 Validating PR targeting 'develop'"
+          echo "🔍 Validating PR title format targeting 'develop'"
           echo "📝 PR Title: $PR_TITLE"
-          echo "🌿 Source Branch: $SOURCE_BRANCH"
 
-          VALID_BRANCH_REGEX="^(feature|bugfix|chore|improvements)/#[0-9]+_[a-zA-Z0-9_-]+$"
+          VALID_TITLE_REGEX="^(feature|bugfix|chore|improvements)/#[0-9]+_[a-zA-Z0-9_-]+$"
 
-          if [[ "$SOURCE_BRANCH" =~ $VALID_BRANCH_REGEX ]]; then
-            echo "✅ Branch name is valid: $SOURCE_BRANCH"
+          if [[ "$PR_TITLE" =~ $VALID_TITLE_REGEX ]]; then
+            echo "✅ PR title format is valid"
           else
-            echo "❌ Invalid branch name format: '$SOURCE_BRANCH'"
-            echo "➡️ Expected: <type>/#<ticket_number>_<desc>"
+            echo "❌ Invalid PR title format!"
+            echo "➡️ Expected format: (feature|bugfix|chore|improvements)/#<ticketId>_<description>"
             exit 1
           fi
