@@ -1,67 +1,69 @@
-name: Fill PR Description
+name: Auto-fill PR Description from Branch Name
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, synchronize, edited]
     branches:
       - stage
       - master
       - main
 
+permissions:
+  pull-requests: write
+
 jobs:
   fill-description:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.base.ref == 'stage' || github.event.pull_request.base.ref == 'master' || github.event.pull_request.base.ref == 'main'
+
     steps:
-      - name: Checkout the code
-        uses: actions/checkout@v4
+      - name: Install GitHub CLI
+        run: |
+          echo "🔧 Installing GitHub CLI..."
+          sudo apt update
+          sudo apt install -y gh
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Parse merged branches and update PR description
+      - name: Authenticate GitHub CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
-          HEAD_BRANCH="${{ github.event.pull_request.head.ref }}"
-          REPO="${{ github.repository }}"
+          echo "🔑 Authenticating with GitHub CLI..."
+          gh auth status
 
-          echo "Fetching merged commits from PR #$PR_NUMBER..."
+      - name: Generate and Update PR Description
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "📋 Fetching source branch of PR #$PR_NUMBER from $REPO..."
+          BRANCH=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName -q .headRefName)
 
-          # Get merged commits
-          COMMITS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json commits -q '.commits[].message')
+          echo "🔎 PR Source Branch: $BRANCH"
 
-          # Extract branch names that follow the pattern
-          BRANCHES=$(echo "$COMMITS" | grep -oE '(feature|bugfix|improvements|chore)/#[0-9]+_[a-zA-Z0-9_/-]+' | sort | uniq)
-
-          declare -A tickets_by_type
-
-          # Iterate over branch names
-          while IFS= read -r branch; do
-            TYPE=$(echo "$branch" | cut -d'/' -f1)
-            TICKET=$(echo "$branch" | grep -oE '#[0-9]+' | tr -d '#')
-            if [ -n "$TICKET" ]; then
-              tickets_by_type[$TYPE]+="Kunnusta/tickets#$TICKET"$'\n'
-            fi
-          done <<< "$BRANCHES"
-
-          # Build markdown description
+          declare -A TICKETS_BY_TYPE
           DESCRIPTION=""
-          for type in "${!tickets_by_type[@]}"; do
-            DESCRIPTION+="### ${type}\n"
-            # Remove duplicates
-            TICKETS=$(echo "${tickets_by_type[$type]}" | sort -u)
-            while IFS= read -r ticket; do
-              DESCRIPTION+="- $ticket\n"
-            done <<< "$TICKETS"
-            DESCRIPTION+="\n"
+
+          # Match branch pattern: type/#ticket_desc (e.g., feature/#12345_add-login)
+          if [[ "$BRANCH" =~ ^(feature|bugfix|improvements|chore)/#([0-9]+)_ ]]; then
+            TYPE="${BASH_REMATCH[1]}"
+            TICKET="${BASH_REMATCH[2]}"
+            echo "✅ Matched branch type: $TYPE"
+            echo "🎫 Extracted ticket number: $TICKET"
+            TICKETS_BY_TYPE["$TYPE"]="$TICKET"
+          else
+            echo "⚠️ Branch format does not match expected pattern. Skipping update."
+            exit 0
+          fi
+
+          # Construct the description
+          for TYPE in "${!TICKETS_BY_TYPE[@]}"; do
+            DESCRIPTION+="### $TYPE"$'\n'
+            DESCRIPTION+="- Kunnusta/tickets#${TICKETS_BY_TYPE[$TYPE]}"$'\n\n'
           done
 
-          echo -e "Generated Description:\n$DESCRIPTION"
+          echo "📝 Generated PR Description:"
+          echo "$DESCRIPTION"
 
-          # Update PR description
+          echo "📤 Updating PR description..."
           gh pr edit "$PR_NUMBER" --repo "$REPO" --body "$DESCRIPTION"
+          echo "✅ PR description updated successfully."
